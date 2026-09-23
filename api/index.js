@@ -1,52 +1,35 @@
+import https from 'https';
+
 export const config = {
   api: {
     bodyParser: false,
   },
 };
 
-export default async function handler(req, res) {
+export default function handler(req, res) {
   const cleanPath = req.url.replace(/^\/api\/index/, '').replace(/^\/api/, '');
-  const targetUrl = `https://api.telegram.org${cleanPath}`;
 
-  const chunks = [];
-  for await (const chunk of req) {
-    chunks.push(chunk);
-  }
-  const bodyBuffer = Buffer.concat(chunks);
-
-  const headers = {};
-  for (const [key, value] of Object.entries(req.headers)) {
-    const lower = key.toLowerCase();
-    // Исключаем заголовки хоста и сжатия, которые ломают проксирование
-    if (!['host', 'content-length', 'connection'].includes(lower)) {
-      headers[key] = value;
-    }
-  }
+  const headers = { ...req.headers };
+  delete headers.host;
+  delete headers.connection;
 
   const options = {
+    hostname: 'api.telegram.org',
+    port: 443,
+    path: cleanPath,
     method: req.method,
     headers: headers,
-    duplex: 'half',
   };
 
-  if (!['GET', 'HEAD'].includes(req.method) && bodyBuffer.length > 0) {
-    options.body = bodyBuffer;
-    headers['content-length'] = String(bodyBuffer.length);
-  }
+  const proxyReq = https.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res);
+  });
 
-  try {
-    const response = await fetch(targetUrl, options);
-    const data = await response.arrayBuffer();
+  proxyReq.on('error', (err) => {
+    res.status(502).json({ ok: false, description: err.message });
+  });
 
-    response.headers.forEach((val, key) => {
-      const lower = key.toLowerCase();
-      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(lower)) {
-        res.setHeader(key, val);
-      }
-    });
-
-    res.status(response.status).send(Buffer.from(data));
-  } catch (error) {
-    res.status(502).json({ ok: false, description: error.message });
-  }
+  // Перенаправляем весь входящий поток байтов (включая фото и документы)
+  req.pipe(proxyReq);
 }
