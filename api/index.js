@@ -1,6 +1,8 @@
 export default async function handler(req, res) {
-  const targetUrl = 'https://api.telegram.org' + req.url.replace(/^\/api/, '');
-  
+  // Формируем полный целевой адрес Telegram API
+  const cleanPath = req.url.replace(/^\/api\/index/, '').replace(/^\/api/, '');
+  const targetUrl = `https://api.telegram.org${cleanPath}`;
+
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
     if (!['host', 'content-length'].includes(key.toLowerCase())) {
@@ -21,7 +23,7 @@ export default async function handler(req, res) {
   try {
     const response = await fetch(targetUrl, options);
     const data = await response.arrayBuffer();
-    
+
     response.headers.forEach((val, key) => {
       if (!['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())) {
         res.setHeader(key, val);
@@ -30,6 +32,6 @@ export default async function handler(req, res) {
 
     res.status(response.status).send(Buffer.from(data));
   } catch (error) {
-    res.status(502).json({ ok: false, error: error.message });
+    res.status(502).json({ ok: false, description: error.message });
   }
 }
