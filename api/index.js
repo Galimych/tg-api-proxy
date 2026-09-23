@@ -1,0 +1,35 @@
+export default async function handler(req, res) {
+  const targetUrl = 'https://api.telegram.org' + req.url.replace(/^\/api/, '');
+  
+  const headers = {};
+  for (const [key, value] of Object.entries(req.headers)) {
+    if (!['host', 'content-length'].includes(key.toLowerCase())) {
+      headers[key] = value;
+    }
+  }
+
+  const options = {
+    method: req.method,
+    headers: headers,
+    redirect: 'follow'
+  };
+
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
+    options.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
+  }
+
+  try {
+    const response = await fetch(targetUrl, options);
+    const data = await response.arrayBuffer();
+    
+    response.headers.forEach((val, key) => {
+      if (!['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())) {
+        res.setHeader(key, val);
+      }
+    });
+
+    res.status(response.status).send(Buffer.from(data));
+  } catch (error) {
+    res.status(502).json({ ok: false, error: error.message });
+  }
+}
