@@ -1,6 +1,6 @@
 export const config = {
   api: {
-    bodyParser: false, // Отключаем автопарсер Vercel, чтобы проксировать чистые байты
+    bodyParser: false,
   },
 };
 
@@ -8,7 +8,6 @@ export default async function handler(req, res) {
   const cleanPath = req.url.replace(/^\/api\/index/, '').replace(/^\/api/, '');
   const targetUrl = `https://api.telegram.org${cleanPath}`;
 
-  // Собираем тело запроса из потока
   const chunks = [];
   for await (const chunk of req) {
     chunks.push(chunk);
@@ -17,7 +16,9 @@ export default async function handler(req, res) {
 
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
-    if (!['host', 'content-length'].includes(key.toLowerCase())) {
+    const lower = key.toLowerCase();
+    // Исключаем заголовки хоста и сжатия, которые ломают проксирование
+    if (!['host', 'content-length', 'connection'].includes(lower)) {
       headers[key] = value;
     }
   }
@@ -25,11 +26,12 @@ export default async function handler(req, res) {
   const options = {
     method: req.method,
     headers: headers,
-    redirect: 'follow',
+    duplex: 'half',
   };
 
   if (!['GET', 'HEAD'].includes(req.method) && bodyBuffer.length > 0) {
     options.body = bodyBuffer;
+    headers['content-length'] = String(bodyBuffer.length);
   }
 
   try {
@@ -37,7 +39,8 @@ export default async function handler(req, res) {
     const data = await response.arrayBuffer();
 
     response.headers.forEach((val, key) => {
-      if (!['content-encoding', 'transfer-encoding'].includes(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (!['content-encoding', 'transfer-encoding', 'connection'].includes(lower)) {
         res.setHeader(key, val);
       }
     });
