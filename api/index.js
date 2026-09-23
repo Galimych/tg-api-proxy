@@ -1,7 +1,19 @@
+export const config = {
+  api: {
+    bodyParser: false, // Отключаем автопарсер Vercel, чтобы проксировать чистые байты
+  },
+};
+
 export default async function handler(req, res) {
-  // Формируем полный целевой адрес Telegram API
   const cleanPath = req.url.replace(/^\/api\/index/, '').replace(/^\/api/, '');
   const targetUrl = `https://api.telegram.org${cleanPath}`;
+
+  // Собираем тело запроса из потока
+  const chunks = [];
+  for await (const chunk of req) {
+    chunks.push(chunk);
+  }
+  const bodyBuffer = Buffer.concat(chunks);
 
   const headers = {};
   for (const [key, value] of Object.entries(req.headers)) {
@@ -13,11 +25,11 @@ export default async function handler(req, res) {
   const options = {
     method: req.method,
     headers: headers,
-    redirect: 'follow'
+    redirect: 'follow',
   };
 
-  if (req.method !== 'GET' && req.method !== 'HEAD' && req.body) {
-    options.body = typeof req.body === 'object' ? JSON.stringify(req.body) : req.body;
+  if (!['GET', 'HEAD'].includes(req.method) && bodyBuffer.length > 0) {
+    options.body = bodyBuffer;
   }
 
   try {
